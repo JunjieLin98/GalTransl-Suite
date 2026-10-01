@@ -531,3 +531,50 @@ README 此前沿用上游原文(上游徽章/前言/教程链接),与"通用汉�
 - **验证**:updater 通道 `releases/latest/download/latest.json` 已下发
   version=1.0.1 + 点号直链 + minisign 签名;安装包直链 200
 - v1.0.0 客户端(更新只提示)将收到 1.0.1 提示——更新通道首次真实闭环
+
+---
+
+# 业务流全链路审查与优化(2026-09-13)
+
+## 审查范围
+
+orchestrator.run 状态机 → steps.py 五步骤 → restore → toolbox/profile 定位。
+逐条核对幂等语义、错误路径、与引擎真实行为的契合度。
+
+## 发现并修复
+
+1. **F1 补丁命名会产出无效补丁(严重,业务流真 bug)**:原 `_patch_name`
+   只对 patch 家族递增;Kirikiri 实际加载序 data < patch<N> < append<N>
+   (越晚越优先),样例 マガルミナ 已有 append.xp3(前人补丁),产出
+   patch.xp3 会被压住**完全不生效**。修复:扫描游戏目录 patch/append
+   家族取最大序号+1(append 家族优先),per-game override 可用
+   `package.name` 强制(unencrypted 场景)。真机验证:マガルミナ→append2。
+2. **F7 UNPACK 非原子**:解包直接写 out_dir,失败残留半成品、重跑不覆盖
+   已删封包的旧产物。修复:先解临时目录,有产物才原子替换;out_dir 已有
+   手动解包产物时零产物视为成功不破坏现场。**坑:msg-tool 会截断目录名
+   后缀**(.data.unpacking→.data,产物散落重复提取),临时目录名必须无点号。
+3. **F6/F5 重跑残留重复翻译**:EXTRACT 不清 extracted/、TRANSLATE 不清
+   gt_input/,改 override 缩小范围后残留旧文件被重复翻译浪费 token。
+   修复:两步骤开始时清理旧 *.json(缓存不受影响,断点续翻语义不变)。
+4. F9 restore 只重置 INJECT 不重置 PACKAGE;F10 registry 私有字段访问
+   → 新增 running_jobs()。F11 EXTRACT 死代码删除。
+5. msg-tool 后缀截断坑记入 _tmp_unpack_dir 注释(后续换工具/加步骤时避雷)。
+
+## 新增测试(8 项)
+
+- test_patch_naming.py 7 场景(无补丁/patch 递增/patch2 递增/append 优先/
+  append2 递增/并存/override 强制)
+- test_unpack_fallback + 手动产物保护场景
+- 全量 106 passed,1 deselected;真机 とける風花 UNPACK+EXTRACT 复验
+  (827 文件回退解包 + 42 JSON 提取 + 零临时残留)
+
+## 复审整改(同日,阶段一)
+
+- ToolBox 多目录解析(--tools-dir > env > 用户目录 %APPDATA%/GalTranslSuite/tools
+  > 冻结安装目录 > 仓库);/api/pipeline/tools + 设置页"外部工具"卡片
+- profile.default_profiles_dir + load_profiles 缺目录报错(消除静默空表)
+- live E2E 加 __main__ 守卫,CI 移除 ignore;版本对齐 1.0.1
+- scripts/frozen_smoke.py 固化(体积门禁+真实管线冒烟)
+- user-guide:外部工具放法/旧版升级双安装提示
+- minisign 轮换约束记录:换钥匙即换内嵌公钥,v1.0.0/1.0.1 客户端将拒收
+  后续更新——只能在下个大版本一并规划

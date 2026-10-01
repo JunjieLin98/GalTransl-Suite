@@ -111,14 +111,15 @@ class Pipeline:
 
     def restore(self) -> int:
         """运维操作:backup/ → 游戏目录;要求无活跃 Job(架构 §3.3)。"""
-        running = [job for job in self.registry._jobs.values() if job.status == "running"]
+        running = self.registry.running_jobs()
         if running:
             raise PipelineError(
                 "E-CACHE-BUSY", f"存在活跃任务 {running[0].id},先取消再 restore"
             )
         self.registry.progress("RESTORE", "开始还原备份")
         count = self.executor().step_restore()
-        # INJECT 及之后步骤快照重置(还原后注入产物失效)
-        if self.project.step_status("INJECT"):
-            self.project.reset_step("INJECT")
+        # 注入/打包产物因还原失效,状态重置
+        for step in ("INJECT", "PACKAGE"):
+            if self.project.step_status(step):
+                self.project.reset_step(step)
         return count

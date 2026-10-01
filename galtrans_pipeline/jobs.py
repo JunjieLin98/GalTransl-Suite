@@ -50,6 +50,10 @@ class JobRegistry:
     def finish(self, job: Job, status: str = "done") -> None:
         job.status = status
 
+    def running_jobs(self) -> list[Job]:
+        with self._lock:
+            return [job for job in self._jobs.values() if job.status == "running"]
+
     def cancel(self, job_id: str) -> bool:
         with self._lock:
             job = self._jobs.get(job_id)

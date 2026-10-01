@@ -157,6 +157,21 @@ def test_unpack_no_archive_matched(tmp_path):
     assert excinfo.value.code == "E-UNPACK-NO-ARCHIVE"
 
 
+def test_unpack_preserves_manual_products_on_zero_output(tmp_path):
+    """out_dir 已有手动解包产物且本次解包零产物 → 视为成功且不破坏现场。"""
+    project = _make_project(tmp_path)
+    toolbox = _FakeToolbox(_make_tools(tmp_path))
+    runner = _FakeRunner(primary_writes=False)
+    pipeline = Pipeline(project, _profile(with_fallback=False), toolbox=toolbox, runner=runner)
+    out_dir = project.project_dir / "work" / "unpacked" / "data"
+    out_dir.mkdir(parents=True)
+    manual = out_dir / "scn" / "manual.txt.scn"
+    manual.parent.mkdir(parents=True)
+    manual.write_bytes(b"PSB")
+    assert pipeline.executor().step_unpack() == 1
+    assert manual.is_file()
+
+
 def test_unpack_without_fallback_config_raises_encrypted(tmp_path):
     project = _make_project(tmp_path)
     toolbox = _FakeToolbox(_make_tools(tmp_path))

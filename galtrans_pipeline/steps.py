@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import sys
 import threading
@@ -129,6 +130,13 @@ class StepExecutor:
     def _count_files(directory: Path) -> int:
         return sum(1 for item in directory.rglob("*") if item.is_file())
 
+    @staticmethod
+    def _tmp_unpack_dir(out_dir: Path) -> Path:
+        """临时解包目录。名字不得含点号:msg-tool 会截断目录名的后缀部分
+        (实测 .data.unpacking → .data),产物散落导致重复提取。"""
+        safe_stem = out_dir.name.replace(".", "_")
+        return out_dir.parent / f"__{safe_stem}__unpacking"
+
     def _unpack_encrypted_fallback(self, spec: dict[str, Any], archive: Path, out_dir: Path) -> int:
         """解包工具退出码 0 但无产物(强加密封包的典型形态)→ 回退用户自备解密工具。"""
         self.progress("UNPACK", f"{archive.name} 解包后无产物,疑似强加密封包")
@@ -140,24 +148,59 @@ class StepExecutor:
                 "E-UNPACK-ENCRYPTED-XP3",
                 f"{archive.name} 解包后无产物(疑似强加密),且 profile 未配置 encrypted_fallback",
             )
-        args = _render_args(args_tmpl, {"archive": str(archive), "out_dir": str(out_dir)})
+        tmp_dir = self._tmp_unpack_dir(out_dir)
+        if tmp_dir.exists():
+            shutil.rmtree(tmp_dir)
+        tmp_dir.mkdir(parents=True)
+        args = _render_args(args_tmpl, {"archive": str(archive), "out_dir": str(tmp_dir)})
         try:
             self._run_tool("UNPACK", tool, args)
         except PipelineError as error:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
             if error.code == "E-EXTRACT-TOOL-MISSING":
                 raise PipelineError(
                     "E-UNPACK-ENCRYPTED-XP3",
                     f"{archive.name} 疑似强加密(msg-tool 无产物),回退解密工具不可用:{error}",
                 ) from error
             raise
-        count = self._count_files(out_dir)
+        count = self._count_files(tmp_dir)
         if count == 0:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
             raise PipelineError(
                 "E-UNPACK-ENCRYPTED-XP3",
                 f"{archive.name} 回退解密后仍无产物",
             )
+        if out_dir.exists():
+            shutil.rmtree(out_dir)
+        tmp_dir.rename(out_dir)
         self.progress("UNPACK", f"{archive.name} 回退解密成功({count} 文件)")
         return 1
+
+    def _unpack_one(self, spec: dict[str, Any], tool: str, archive: Path, out_dir: Path) -> int:
+        """解单个封包:先解到临时目录,有产物才原子替换 out_dir。
+
+        幂等语义(重跑覆盖自身产物)与现场保护(解包失败不破坏 out_dir 中
+        已有的手动解包产物)由此同时成立。
+        """
+        tmp_dir = self._tmp_unpack_dir(out_dir)
+        if tmp_dir.exists():
+            shutil.rmtree(tmp_dir)
+        tmp_dir.mkdir(parents=True)
+        self.progress("UNPACK", f"{archive.name} → {out_dir.name}/")
+        args = _render_args(spec["args"], {"archive": str(archive), "out_dir": str(tmp_dir)})
+        self._run_tool("UNPACK", tool, args)
+        if self._count_files(tmp_dir) > 0:
+            if out_dir.exists():
+                shutil.rmtree(out_dir)
+            tmp_dir.rename(out_dir)
+            return 1
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        # 退出码 0 但零产物:强加密封包下解包工具的典型行为;
+        # out_dir 已有手动解包产物时视为成功,不覆盖
+        if out_dir.is_dir() and self._count_files(out_dir) > 0:
+            self.progress("UNPACK", f"{archive.name} 解包零产物,保留已有产物({out_dir.name}/)")
+            return 1
+        return self._unpack_encrypted_fallback(spec, archive, out_dir)
 
     def step_unpack(self) -> int:
         spec = self.profile.step("unpack")
@@ -172,19 +215,7 @@ class StepExecutor:
             matched_any = True
             for archive in archives:
                 stem = archive.stem or archive.name
-                out_dir = unpacked / stem
-                out_dir.mkdir(parents=True, exist_ok=True)
-                self.progress("UNPACK", f"{archive.name} → {out_dir.name}/")
-                args = _render_args(
-                    spec["args"], {"archive": str(archive), "out_dir": str(out_dir)}
-                )
-                self._run_tool("UNPACK", tool, args)
-                if self._count_files(out_dir) > 0:
-                    total += 1
-                else:
-                    # 退出码 0 但零产物:加密封包下 msg-tool 的行为;工作目录里
-                    # 若已有手动解包产物则视为成功,不覆盖
-                    total += self._unpack_encrypted_fallback(spec, archive, out_dir)
+                total += self._unpack_one(spec, tool, archive, unpacked / stem)
         if total == 0:
             if not matched_any:
                 raise PipelineError(
@@ -218,9 +249,13 @@ class StepExecutor:
         tool = spec.get("tool", "msg-tool")
         unpacked = self.project.subdir("work/unpacked")
         extracted = self.project.subdir("work/extracted")
+        extracted.mkdir(parents=True, exist_ok=True)
+        # 幂等:清掉上一轮提取产物(含 _manifest.json),避免改 override 后
+        # 残留旧文件被 TRANSLATE 当作可翻译来源(浪费 token 且输出对不上)
+        for old in extracted.glob("*.json"):
+            old.unlink()
         input_glob = spec.get("input_glob", "**/*")
         magic_filter = str(spec.get("magic_filter", "") or "")
-        encoding_arg = spec.get("encoding", "")
         manifest: dict[str, str] = {}
         count = 0
         for source in sorted(unpacked.glob(input_glob)):
@@ -234,8 +269,6 @@ class StepExecutor:
             args = _render_args(
                 spec["args"], {"input": str(source), "out_file": str(out_file)}
             )
-            if encoding_arg:
-                args = [arg for arg in args]  # 编码旗标已在模板中
             self.progress("EXTRACT", f"{relative}")
             self._run_tool("EXTRACT", tool, args)
             if not out_file.is_file():
@@ -290,6 +323,10 @@ class StepExecutor:
         )
         if not sources:
             raise PipelineError("E-EXTRACT-NO-SCRIPT", "没有可翻译的提取产物")
+        gt_input.mkdir(parents=True, exist_ok=True)
+        # 幂等:清掉上一轮的输入副本,避免 EXTRACT 范围缩小后残留旧文件被重复翻译
+        for old in gt_input.glob("*.json"):
+            old.unlink()
         for source in sources:
             shutil.copy2(source, gt_input / source.name)
 
@@ -465,14 +502,32 @@ class StepExecutor:
         self._write_dist_docs(self.project.subdir("dist"))
         return count
 
-    def _patch_name(self, base: str = "patch") -> str:
-        """游戏已有同名补丁时递增命名(FR-C4:patch2 分支)。"""
-        name = base
-        index = 1
-        while (self.project.game_dir / f"{name}.xp3").is_file():
-            index += 1
-            name = f"{base}{index}"
-        return name
+    _KRKR_PATCH_RE = re.compile(r"^(patch|append)([0-9]*)\.xp3$", re.IGNORECASE)
+
+    def _patch_name(self, spec: dict[str, Any]) -> str:
+        """按 Kirikiri 加载序列选补丁名:data < patch<N> < append<N>,越晚加载越优先。
+
+        游戏已有 append.xp3(如前人补丁)时,新补丁必须命名为 append2+
+        才能覆盖它;命名为 patch.xp3 会被已有 append 压住而完全不生效
+        (FR-C4 patch2 分支的完整语义)。per-game override 可用
+        package.name 强制指定。
+        """
+        forced = str(spec.get("name", "") or "").strip()
+        if forced:
+            return forced
+        family_max: dict[str, int] = {}
+        for entry in self.project.check_game_dir().glob("*.xp3"):
+            match = self._KRKR_PATCH_RE.match(entry.name)
+            if not match:
+                continue
+            family = match.group(1).lower()
+            index = int(match.group(2) or "1")
+            family_max[family] = max(family_max.get(family, 0), index)
+        if "append" in family_max:
+            return f"append{family_max['append'] + 1}"
+        if "patch" in family_max:
+            return f"patch{family_max['patch'] + 1}"
+        return "patch"
 
     def _write_dist_docs(self, target_dir: Path) -> None:
         (target_dir / "TRANSLATION_NOTICE").write_text(
@@ -488,7 +543,7 @@ class StepExecutor:
         if not files:
             raise PipelineError("E-INJECT-IMPORT-FAIL", "没有可打包的注入产物")
         package_dir = self.project.subdir("work/package")
-        name = self._patch_name("patch")
+        name = self._patch_name(spec)
         patch_folder = package_dir / name
         if patch_folder.exists():
             shutil.rmtree(patch_folder)
