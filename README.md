@@ -1,7 +1,7 @@
 <h1><p align='center'>GalTransl Suite</p></h1>
 <div align=center>
-  <img src="https://img.shields.io/github/v/release/JunjieLin98/GalTransl"/>
-  <img src="https://img.shields.io/github/license/JunjieLin98/GalTransl"/>
+  <img src="https://img.shields.io/github/v/release/JunjieLin98/GalTransl-Suite"/>
+  <img src="https://img.shields.io/github/license/JunjieLin98/GalTransl-Suite"/>
   <img src="https://img.shields.io/badge/python-3.11%2B-blue"/>
 </div>
 <p align='center'><b>通用 Galgame LLM 汉化套件</b> —— 拖入游戏目录,自动识别引擎、提取文本、LLM 翻译、回封产出中文补丁</p>
@@ -54,7 +54,7 @@ GalTransl Suite 是开源项目 [GalTransl](https://github.com/GalTransl/GalTran
 
 ### 桌面端(推荐)
 
-1. 从 [Releases](https://github.com/JunjieLin98/GalTransl/releases/latest) 下载 `GalTransl.Suite_x64-setup.exe` 安装(自带本地后端,无需安装 Python;安装包未签名,SmartScreen 提示请选"更多信息 → 仍要运行")
+1. 从 [Releases](https://github.com/JunjieLin98/GalTransl-Suite/releases/latest) 下载 `GalTransl.Suite_x64-setup.exe` 安装(自带本地后端,无需安装 Python;安装包未签名,SmartScreen 提示请选"更多信息 → 仍要运行")
 2. 新建工程 → 拖入游戏目录 → 引擎自动识别 → 配置 API key → 运行流水线
 3. 新手请看 **[用户手册](docs/user-guide.md)**
 

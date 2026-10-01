@@ -45,7 +45,7 @@
       "active": true,
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDEzM0RCNzZGNjlBM0EzRgpSV1EvT3ByMmR0c3pBVzE5MjhXRmtMbkM3Y0dKQlluSEVacEdqc0VENzEwclZ4WWsyMlk5Z1FZcQo=",
       "endpoints": [
-        "https://github.com/JunjieLin98/GalTransl/releases/latest/download/latest.json"
+        "https://github.com/JunjieLin98/GalTransl-Suite/releases/latest/download/latest.json"
       ]
     }
   }

@@ -1,7 +1,7 @@
 <h1><p align='center'>GalTransl Suite</p></h1>
 <div align=center>
-  <img src="https://img.shields.io/github/v/release/JunjieLin98/GalTransl"/>
-  <img src="https://img.shields.io/github/license/JunjieLin98/GalTransl"/>
+  <img src="https://img.shields.io/github/v/release/JunjieLin98/GalTransl-Suite"/>
+  <img src="https://img.shields.io/github/license/JunjieLin98/GalTransl-Suite"/>
   <img src="https://img.shields.io/badge/python-3.11%2B-blue"/>
 </div>
 <p align='center'><b>An all-in-one LLM localization suite for visual novels</b> — drop in a game folder, and get a translated patch: engine detection, text extraction, LLM translation, and repacking, fully orchestrated.</p>
@@ -46,7 +46,7 @@ Bundled third-party tools and licenses: [THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICE
 
 ### Desktop (recommended)
 
-1. Grab `GalTransl.Suite_x64-setup.exe` from [Releases](https://github.com/JunjieLin98/GalTransl/releases/latest) — bundles the local Python backend; the installer is unsigned, so choose "More info → Run anyway" on SmartScreen
+1. Grab `GalTransl.Suite_x64-setup.exe` from [Releases](https://github.com/JunjieLin98/GalTransl-Suite/releases/latest) — bundles the local Python backend; the installer is unsigned, so choose "More info → Run anyway" on SmartScreen
 2. New project → drop the game folder → engine auto-detected → set your API key → run the pipeline
 
 ### CLI
