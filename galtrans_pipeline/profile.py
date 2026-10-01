@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -80,11 +82,31 @@ class EngineProfile:
                     raise PipelineError("E-INVALID-PROFILE", f"steps.{key} 缺少 tool")
 
 
+def default_profiles_dir() -> Path:
+    """profiles 目录解析:显式环境变量 → 冻结态安装根 → 仓库根。
+
+    冻结态不依赖 __file__(PyInstaller 临时解包目录)与 cwd,杜绝
+    run_backend chdir 失败时 profiles 静默变空的路径脆弱性。
+    """
+    env_dir = os.environ.get("GALTRANS_PROFILES_DIR")
+    if env_dir:
+        return Path(env_dir)
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent.parent / "profiles"
+    return Path(__file__).resolve().parent.parent / "profiles"
+
+
 def load_profiles(profiles_dir: Path) -> dict[str, EngineProfile]:
-    """加载目录下全部 *.yaml profile,按 profile 字段索引。"""
+    """加载目录下全部 *.yaml profile,按 profile 字段索引。
+
+    目录缺失直接报错:静默返回空字典会把环境问题伪装成"未识别引擎"。
+    """
     profiles: dict[str, EngineProfile] = {}
     if not profiles_dir.is_dir():
-        return profiles
+        raise PipelineError(
+            "E-INVALID-PROFILE",
+            f"profiles 目录不存在: {profiles_dir}(可用 GALTRANS_PROFILES_DIR 显式指定)",
+        )
     for path in sorted(profiles_dir.glob("*.yaml")):
         data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         if not isinstance(data, dict) or not data.get("profile"):

@@ -107,7 +107,7 @@ class StepExecutor:
     # ------------------------------------------------------------------
     def step_detect(self) -> list[dict[str, Any]]:
         from .detect import detect_engine
-        from .profile import load_profiles
+        from .profile import default_profiles_dir, load_profiles
 
         profiles = load_profiles(self._profiles_dir())
         results = detect_engine(self.project.game_dir, profiles)
@@ -117,11 +117,10 @@ class StepExecutor:
         return results
 
     def _profiles_dir(self) -> Path:
-        env_dir = Path(
-            __file__
-        ).parent.parent / "profiles"  # 仓库根/profiles
+        from .profile import default_profiles_dir
+
         override = self.project.data.get("profiles_dir")
-        return Path(override) if override else env_dir
+        return Path(override) if override else default_profiles_dir()
 
     # ------------------------------------------------------------------
     # UNPACK

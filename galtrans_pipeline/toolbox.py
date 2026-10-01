@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import os
 import shutil
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -50,31 +51,50 @@ TOOL_SPECS: dict[str, ToolSpec] = {
 
 
 class ToolBox:
-    def __init__(self, tools_dir: Path | None = None) -> None:
-        self.tools_dir = self._resolve_tools_dir(tools_dir)
+    """工具定位:按优先级搜索多个目录,而非单一目录。
 
-    @staticmethod
-    def _resolve_tools_dir(explicit: Path | None) -> Path | None:
-        if explicit is not None:
-            return explicit
+    目录优先级:显式传入(--tools-dir)→ GALTRANS_TOOLS_DIR 环境变量 →
+    用户级目录 %APPDATA%/GalTranslSuite/tools(安装版无需管理员即可放
+    xp3brute 等自备工具)→ 冻结态安装根 tools/bin → 仓库 tools/bin(开发态)。
+    同名冲突时靠前目录获胜(用户目录可覆盖随包版本);全部目录逐个搜索,
+    因此工具分散在多个目录也能各自找到。
+    """
+
+    USER_TOOLS_DIRNAME = ("GalTranslSuite", "tools")
+
+    def __init__(self, tools_dir: Path | None = None) -> None:
+        self.explicit_dir = tools_dir
+
+    def candidate_dirs(self) -> list[Path]:
+        dirs: list[Path] = []
+
+        def _add(path: Path) -> None:
+            resolved = path.resolve()
+            if resolved not in dirs:
+                dirs.append(resolved)
+
+        if self.explicit_dir is not None:
+            _add(self.explicit_dir)
         env_dir = os.environ.get("GALTRANS_TOOLS_DIR")
         if env_dir:
-            return Path(env_dir)
-        # 从当前目录向上查找仓库的 tools/bin
+            _add(Path(env_dir))
+        appdata = os.environ.get("APPDATA")
+        if appdata:
+            _add(Path(appdata).joinpath(*self.USER_TOOLS_DIRNAME))
+        if getattr(sys, "frozen", False):
+            _add(Path(sys.executable).resolve().parent.parent / "tools" / "bin")
         probe = Path.cwd().resolve()
         for candidate in [probe, *probe.parents]:
-            tools_bin = candidate / "tools" / "bin"
-            if tools_bin.is_dir():
-                return tools_bin
-        return None
+            _add(candidate / "tools" / "bin")
+        return [d for d in dirs if d.is_dir()]
 
     def locate(self, tool_name: str) -> Path:
         spec = TOOL_SPECS.get(tool_name)
         if spec is None:
             raise PipelineError("E-EXTRACT-TOOL-MISSING", f"未知工具: {tool_name}")
         candidates: list[Path] = []
-        if self.tools_dir is not None:
-            candidates.append(self.tools_dir / spec.exe)
+        for directory in self.candidate_dirs():
+            candidates.append(directory / spec.exe)
         path_env = shutil.which(spec.exe)
         if path_env:
             candidates.append(Path(path_env))
@@ -82,9 +102,11 @@ class ToolBox:
             if candidate.is_file():
                 self._verify(spec, candidate)
                 return candidate
+        searched = [str(d) for d in self.candidate_dirs()] or ["(无可用目录)"]
         raise PipelineError(
             "E-EXTRACT-TOOL-MISSING",
-            f"找不到 {tool_name}({spec.exe});搜索目录: {self.tools_dir or '未找到 tools/bin'}",
+            f"找不到 {tool_name}({spec.exe});已搜索目录: {'; '.join(searched)}"
+            f"。可将工具放入以上任一目录(推荐用户目录 %APPDATA%\\GalTranslSuite\\tools)",
         )
 
     @staticmethod

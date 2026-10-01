@@ -18,7 +18,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def _profiles_dir(args_profiles: str | None) -> Path:
-    return Path(args_profiles) if args_profiles else REPO_ROOT / "profiles"
+    if args_profiles:
+        return Path(args_profiles)
+    from .profile import default_profiles_dir
+
+    return default_profiles_dir()
 
 
 def _print_results(results: list[dict]) -> None:

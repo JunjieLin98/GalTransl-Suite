@@ -13,6 +13,8 @@ import {
   CUSTOM_BACKGROUND_SURFACE_OPACITY_MAX,
   CUSTOM_BACKGROUND_SURFACE_OPACITY_MIN,
   type PluginInfo,
+  type ToolInfo,
+  fetchTools,
   type ThemeMode,
   clearCustomBackgroundPreference,
   fetchVersion,
@@ -144,6 +146,89 @@ function PluginListSection() {
   );
 }
 
+function ToolsSection() {
+  const [dirs, setDirs] = useState<string[]>([]);
+  const [tools, setTools] = useState<ToolInfo[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    fetchTools()
+      .then((res) => {
+        if (!cancelled) {
+          setDirs(res.dirs);
+          setTools(res.tools);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) setError(normalizeError(err, '加载工具信息失败'));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  const userDir = dirs.find((d) => d.toLowerCase().includes('galtranslsuite'));
+
+  return (
+    <section className="panel">
+      <header className="panel__header">
+        <div>
+          <h2>外部工具</h2>
+          <p>流水线使用的外部工具及其定位目录。自备工具(xp3brute 等)放入任一目录即可,推荐用户目录(无需管理员权限)。</p>
+        </div>
+      </header>
+
+      {loading ? (
+        <LoadingState title="加载工具信息中…" description="正在检测各目录中的外部工具。" />
+      ) : error ? (
+        <ErrorState title="加载工具信息失败" description={error} />
+      ) : (
+        <>
+          <div className="plugin-list">
+            {tools.map((tool) => (
+              <div key={tool.name} className="plugin-card">
+                <div className="plugin-card__header">
+                  <span className="plugin-card__name">{tool.name}</span>
+                  <span className={`plugin-card__type ${tool.found ? 'plugin-card__type--text' : ''}`}
+                    style={tool.found ? undefined : { opacity: 0.75 }}>
+                    {tool.found ? '已就绪' : '未找到'}
+                  </span>
+                </div>
+                <div className="plugin-card__meta">
+                  <span>{tool.file}</span>
+                  {tool.found && tool.path && <span>位置: {tool.path}</span>}
+                </div>
+                {!tool.found && (
+                  <p className="plugin-card__desc">
+                    {tool.bundled
+                      ? '随包工具缺失,请重新安装或将其手动放入下方任一目录。'
+                      : `用户自备工具(本项目不分发);获取后放入任一目录即可被自动调用。`}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 'var(--space-4)', fontSize: '0.85rem', opacity: 0.8 }}>
+            <div>搜索目录(按优先级):</div>
+            <ul style={{ margin: '0.25rem 0 0', paddingLeft: '1.25rem' }}>
+              {dirs.map((d) => (
+                <li key={d} style={userDir === d ? { fontWeight: 600 } : undefined}>{d}</li>
+              ))}
+            </ul>
+            <div style={{ marginTop: '0.5rem' }}>
+              环境变量 GALTRANS_TOOLS_DIR / GALTRANS_PROFILES_DIR 可显式指定自定义目录。
+            </div>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
 
 export function SettingsPage() {
   const navigate = useNavigate();
@@ -672,6 +757,7 @@ export function SettingsPage() {
           translatorCount={translators.length}
         />
 
+        <ToolsSection />
         <PluginListSection />
       </div>
     </div>

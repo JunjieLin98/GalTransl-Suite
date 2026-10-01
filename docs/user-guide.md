@@ -64,8 +64,14 @@
 
 - **杀毒软件报警**:Kirikiri 补丁可能附带 version.dll(免封包加载组件,MIT,
   见补丁内 LICENSE-THIRD-PARTY.txt),属误报常见对象,加白名单即可。
-- **加密封包解不开**:部分游戏需要 xp3-brute 等社区解密工具(**自备**,
-  本软件不内置),在 per-game override 中指定后重跑。
+- **加密封包解不开**:部分游戏需要 xp3brute 等社区解密工具(**自备**,
+  本软件不内置)。把 `xp3brute.exe` 放入任一工具目录后重跑 UNPACK 即可,
+  流水线会在解包零产物时自动回退调用它;工具目录与检测状态见
+  **设置页 → 外部工具**。目录优先级:`--tools-dir` / `GALTRANS_TOOLS_DIR`
+  → 用户目录 `%APPDATA%\GalTranslSuite\tools`(推荐,无需管理员权限)
+  → 安装目录 tools/bin。
+- **从旧版 GalTransl Desktop 升级**:产品改名后安装目录不同,**更新后请
+  手动卸载旧版 "GalTransl Desktop"**(设置 → 应用),工程与设置数据不受影响。
 - **Unity 游戏提取不到文本**:确认文本在 TextAsset(JSON/TSV 格式);
   文本硬编码在代码里(Il2Cpp)的场景请看 `docs/research/unity-il2cpp.md` 的
   XUAT 引导。

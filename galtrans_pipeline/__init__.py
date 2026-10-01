@@ -4,6 +4,6 @@
 设计约束见 docs/architecture.md:翻译算法层零侵入;缓存/存储层受控改造。
 """
 
-__version__ = "0.1.0"
+__version__ = "1.0.1"
 
 STEPS = ["DETECT", "UNPACK", "EXTRACT", "TRANSLATE", "INJECT", "PACKAGE"]

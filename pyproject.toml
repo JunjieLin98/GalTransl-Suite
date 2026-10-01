@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "galtrans-pipeline"
-version = "0.1.0"
+version = "1.0.1"
 description = "GalTransl Suite — 通用 Galgame LLM 汉化套件编排层(GalTransl fork)"
 requires-python = ">=3.11"
 license = { text = "GPL-3.0-or-later" }

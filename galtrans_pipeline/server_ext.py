@@ -18,6 +18,7 @@ import json
 import os
 import queue
 import secrets
+import shutil
 import sys
 import threading
 import time
@@ -37,7 +38,7 @@ def _app_root() -> Path:
     """仓库根(开发态)/ 发布包根(冻结态:backend/galtransl_backend.exe 的上级)。
 
     发布布局(见 scripts/build_windows.py):
-      app/{GalTransl Desktop.exe, backend/, plugins/, profiles/, tools/bin/, res/}
+      app/{GalTransl Suite.exe, backend/, plugins/, profiles/, tools/bin/, res/}
     """
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent.parent
@@ -45,8 +46,13 @@ def _app_root() -> Path:
 
 
 REPO_ROOT = _app_root()
-PROFILES_DIR = REPO_ROOT / "profiles"
-DEFAULT_TOOLS_DIR = REPO_ROOT / "tools" / "bin"
+
+
+def _profiles_dir() -> Path:
+    """env 优先的 profiles 目录(与 toolbox 多目录策略同源的单一事实)。"""
+    from .profile import default_profiles_dir
+
+    return default_profiles_dir()
 
 # ---------------------------------------------------------------- Host 白名单
 ALLOWED_HOSTS = {"localhost", "127.0.0.1"}
@@ -265,11 +271,11 @@ class PipelineManager:
         model: str = "",
     ) -> None:
         project = PatchProject.load(Path(project_dir))
-        profiles = load_profiles(PROFILES_DIR)
+        profiles = load_profiles(_profiles_dir())
         profile = profiles[project.profile_name].apply_override(project.overrides)
         job_id = secrets.token_urlsafe(8)
         runner = ProcessRunner()
-        pipeline = Pipeline(project, profile, toolbox=ToolBox(DEFAULT_TOOLS_DIR), runner=runner)
+        pipeline = Pipeline(project, profile, toolbox=ToolBox(), runner=runner)
         cancel_event = threading.Event()
 
         def on_progress(step: str, message: str) -> None:
@@ -538,7 +544,7 @@ def handle_pipeline_get(handler, registry) -> None:
     if path == "/api/pipeline/profiles":
         from .detect import detect_engine
 
-        profiles = load_profiles(PROFILES_DIR)
+        profiles = load_profiles(_profiles_dir())
         payload = []
         for name, profile in profiles.items():
             payload.append(
@@ -549,6 +555,33 @@ def handle_pipeline_get(handler, registry) -> None:
                 }
             )
         _send_json(handler, {"profiles": payload})
+        return
+
+    if path == "/api/pipeline/tools":
+        from .toolbox import TOOL_SPECS, ToolBox
+
+        box = ToolBox()
+        dirs = box.candidate_dirs()
+        tools = []
+        for name, spec in TOOL_SPECS.items():
+            found = ""
+            for directory in dirs:
+                candidate = directory / spec.exe
+                if candidate.is_file():
+                    found = str(candidate)
+                    break
+            if not found and shutil.which(spec.exe):
+                found = shutil.which(spec.exe) or ""
+            tools.append(
+                {
+                    "name": name,
+                    "file": spec.exe,
+                    "found": bool(found),
+                    "path": found,
+                    "bundled": name in ("msg-tool", "xp3pack", "unity_tool"),
+                }
+            )
+        _send_json(handler, {"dirs": [str(d) for d in dirs], "tools": tools})
         return
 
     if path == "/api/pipeline/events":
@@ -703,7 +736,7 @@ def handle_pipeline_post(handler, registry) -> None:
                 status=HTTPStatus.BAD_REQUEST,
             )
             return
-        profiles = load_profiles(PROFILES_DIR)
+        profiles = load_profiles(_profiles_dir())
         _send_json(handler, {"results": detect_engine(game_dir, profiles)})
         return
 
@@ -890,9 +923,9 @@ def handle_pipeline_post(handler, registry) -> None:
         project_dir = Path(str(body.get("project_dir", "")))
         try:
             project = PatchProject.load(project_dir)
-            profiles = load_profiles(PROFILES_DIR)
+            profiles = load_profiles(_profiles_dir())
             profile = profiles[project.profile_name].apply_override(project.overrides)
-            pipeline = Pipeline(project, profile, toolbox=ToolBox(DEFAULT_TOOLS_DIR))
+            pipeline = Pipeline(project, profile, toolbox=ToolBox())
             count = pipeline.restore()
         except PipelineError as error:
             _send_json(

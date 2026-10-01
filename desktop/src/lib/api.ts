@@ -449,6 +449,23 @@ export async function fetchVersion() {
   return response.version;
 }
 
+export type ToolInfo = {
+  name: string;
+  file: string;
+  found: boolean;
+  path: string;
+  bundled: boolean;
+};
+
+export type ToolsResponse = {
+  dirs: string[];
+  tools: ToolInfo[];
+};
+
+export async function fetchTools() {
+  return apiRequest<ToolsResponse>('/api/pipeline/tools');
+}
+
 export async function fetchVersionCheck() {
   return apiRequest<VersionCheckResponse>('/api/version/check');
 }
